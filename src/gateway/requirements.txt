@@ -1,0 +1,11 @@
+# Sony Spresense GNSS Gateway - Evaluation 03
+# Python Dependencies for Ubuntu Host
+
+# Serial communication for both gateway.py and fetch_logs.py
+pyserial==3.5
+
+# MQTT Client for bridging data to Node-RED/Cloud
+paho-mqtt==1.6.1
+
+# Optional: For future-proofing if you add environment variable support
+python-dotenv==1.0.0
