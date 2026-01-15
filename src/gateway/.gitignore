@@ -1,0 +1,16 @@
+# Python Virtual Environment
+.venv/
+bin/
+lib/
+include/
+pyvenv.cfg
+
+# Python Bytecode
+__pycache__/
+*.py[cod]
+
+# Local Config (If you want to keep secrets out of GitHub)
+config.toml 
+
+# System files
+.DS_Store# Created by venv; see https://docs.python.org/3/library/venv.html
