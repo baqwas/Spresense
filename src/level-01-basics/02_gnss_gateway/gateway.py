@@ -92,7 +92,7 @@ def main():
     client.on_connect = on_connect
 
     try:
-        client.connect(config['mqtt']['broker'], config['mqtt']['port'], 60)
+        client.connect(config['mqtt']['broker'], int(config['mqtt']['port']), 60)
         client.loop_start()
     except Exception as e:
         logger.error(f"Could not connect to MQTT Broker: {e}")

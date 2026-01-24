@@ -18,78 +18,48 @@
 #include "shared_types.h"
 
 SpGnss Gnss;
-static GnssPacket sharedPacket;
+static GnssPacket sharedPacket __attribute__((section(".shared_memory")));
+uint32_t counter = 0;
+bool gnss_active = false;
 
 void setup() {
   MP.begin();
-  
-  // Milestone LEDs
-  pinMode(LED1, OUTPUT); digitalWrite(LED1, HIGH); 
+  pinMode(LED1, OUTPUT);
 
-  int result = Gnss.begin(); 
-  if (result != 0) {
-    // If this fails, the hardware isn't responding
-    return;
-  }
-/* * ANTENNA SELECTION
-   * 0: Automatic (Attempts to detect)
-   * 1: Internal (The white chip antenna on the board) <-- TRY THIS
-   * 2: External (The U.FL connector)
-   */
-  // Gnss.setAntennaSelection(1);
-  // --- Constellation Diversity ---
-  // Enable a wider variety of constellations to overcome the wall blockage
-  Gnss.select(GPS); // (0): GPS + QZSS (Michibiki)
-  Gnss.select(GLONASS); // (1): GLONASS (Russian)
-  Gnss.select(SBAS);   // Improves accuracy
+  // Reset GNSS hardware
+  Gnss.end();
+  delay(1000);
 
-  // These constants are often missing in the header, but the chip hears them:
-  Gnss.select(6); // BeiDou (Chinese - massive constellation)
-  Gnss.select(7); // Galileo (European - very high precision)
-
-  // WARM_START: Uses saved almanac but re-acquires signals.
-  // This is the most resilient mode for your 15ft wall environment.
-  // int result = Gnss.start(WARM_START);
-  result = Gnss.start(COLD_START);
-  
-  if (result != 0) {
-    // If Warm Start fails (memory corrupted), fallback to Cold Start
-    Gnss.start(COLD_START);
+  if (Gnss.begin() == 0) {
+    Gnss.select(GPS);
+    Gnss.select(GLONASS);
+    if (Gnss.start(COLD_START) == 0) {
+      gnss_active = true;
+    }
   }
 }
 
 void loop() {
-  // Non-blocking check (10ms timeout)
-  bool hasUpdate = Gnss.waitUpdate(10); 
-
-  if (hasUpdate) {
+  sharedPacket.heartbeat = counter++;
+  
+  if (gnss_active && Gnss.waitUpdate(100)) {
     SpNavData NavData;
     Gnss.getNavData(&NavData);
-    
     sharedPacket.lat = NavData.latitude;
     sharedPacket.lon = NavData.longitude;
-    sharedPacket.alt = NavData.altitude;
     sharedPacket.hdop = NavData.hdop;
     sharedPacket.numSats = NavData.numSatellites;
-
-    sharedPacket.time.year = NavData.time.year;
-    sharedPacket.time.month = NavData.time.month;
-    sharedPacket.time.day = NavData.time.day;
-    sharedPacket.time.hour = NavData.time.hour;
-    sharedPacket.time.minute = NavData.time.minute;
-    sharedPacket.time.sec = NavData.time.sec;
-    sharedPacket.time.usec = NavData.time.usec;
+    sharedPacket.sec = NavData.time.sec;
+    
+    digitalWrite(LED1, HIGH); // Solid flash = GPS Fix/Update
   } else {
-    // If no hardware data, keep the heartbeat flowing with a marker value
-    sharedPacket.lat = 0.000002; 
-    sharedPacket.hdop = 99.8;
+    // No GPS data yet, but keep the heartbeat moving
+    sharedPacket.lat = 0.0; 
+    digitalWrite(LED1, LOW);
   }
 
-  // IPC Send is now OUTSIDE the 'if' block.
-  // This prevents the Main Core from hanging at MP.Recv.
-  MP.Send(10, &sharedPacket, 0);
-
-  // Toggle LED1 to show the loop is actually running
-  digitalWrite(LED1, !digitalRead(LED1));
-  delay(1000); 
+  GnssPacket* ptr = &sharedPacket;
+  MP.Send(10, ptr, 0); 
+  
+  delay(900); 
 }

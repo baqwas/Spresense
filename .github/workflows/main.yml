@@ -1,0 +1,76 @@
+name: Spresense Multi-Core Build
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install Spresense Platform
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config set board_manager.additional_urls https://github.com/sonydevworld/spresense-arduino-compatible/releases/download/generic/package_spresense_index.json
+          arduino-cli core update-index
+          arduino-cli core install spresense:spresense
+
+      - name: Install Libraries
+        run: |
+          arduino-cli lib update-index
+          arduino-cli lib install "PubSubClient" "ArduinoJson"
+
+      - name: Inject Secrets
+        run: |
+          SKETCHES=$(find . -maxdepth 2 -name "*.ino" | xargs -I {} dirname {} | sort -u)
+          for sketch in $SKETCHES; do
+            cat <<EOF > "$sketch/secrets.h"
+          #ifndef SECRETS_H
+          #define SECRETS_H
+          #define WIFI_SSID "${{ secrets.WIFI_SSID }}"
+          #define WIFI_PASS "${{ secrets.WIFI_PASS }}"
+          #define MQTT_SERVER "${{ secrets.MQTT_SERVER }}"
+          #endif
+          EOF
+          done
+
+      - name: Compile Multi-Core Sketches
+        run: |
+          # Find all main sketch directories (ignoring internal sub-folders for a moment)
+          MAIN_SKETCHES=$(find . -maxdepth 2 -name "*.ino" ! -path "*/sub*/*" | xargs -I {} dirname {} | sort -u)
+
+          for main_dir in $MAIN_SKETCHES; do
+            echo "Processing Project: $main_dir"
+
+            # 1. Check for and compile Sub-Cores first (sub1 through sub5)
+            for i in {1..5}; do
+              SUB_PATH="$main_dir/sub$i"
+              if [ -d "$SUB_PATH" ]; then
+                echo "  Found Sub-Core $i. Compiling..."
+                arduino-cli compile --fqbn spresense:spresense:spresense:core=sub$i "$SUB_PATH" --output-dir "$SUB_PATH/build"
+              fi
+            done
+
+            # 2. Compile the Main Core
+            echo "  Compiling Main Core..."
+            arduino-cli compile --fqbn spresense:spresense:spresense:core=main "$main_dir" --output-dir "$main_dir/build"
+
+            if [ $? -ne 0 ]; then exit 1; fi
+          done
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spresense-multicore-firmware
+          path: ./**/build/*.spk
