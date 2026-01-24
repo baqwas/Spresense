@@ -6,6 +6,8 @@
 
 Welcome to the **Sony Spresense** development repository. This project is a comprehensive evaluation of the Spresence ecosystem, transitioning from beginner "Hello World" basics to intermediate multicore AI and DSP solutions.
 
+![Spresense Build](https://github.com/baqwas/spresense/actions/workflows/main.yml/badge.svg?branch=main)
+
 ---
 
 ## 📺 Project Context
